@@ -1,37 +1,43 @@
-const express = require("express");
-const { exec } = require("child_process");
-const cors = require("cors");
+const express = require('express');
+const { exec } = require('child_process');
+const ytdlp = require('yt-dlp-exec');
 const app = express();
+const PORT = process.env.PORT || 3000;
 
-app.use(cors());
 app.use(express.json());
 
-app.post("/fetch", (req, res) => {
-  const url = req.body.url;
-  if (!url) return res.json({ error: "No URL provided" });
+app.post('/fetch', async (req, res) => {
+  const { url } = req.body;
+  if (!url) return res.status(400).json({ error: "No URL provided" });
 
-  const command = `yt-dlp -j --cookies cookies.txt "${url}"`;
+  try {
+    const result = await ytdlp(url, {
+      dumpSingleJson: true,
+      referer: 'https://www.kukufm.com',
+      cookies: './cookies.txt',
+      noWarnings: true,
+      noCheckCertificate: true
+    });
 
-  exec(command, (error, stdout, stderr) => {
-    if (error) return res.json({ error: "Download failed: " + stderr });
+    const episodes = result.entries?.map((ep) => ({
+      title: ep.title,
+      url: ep.url || ep.original_url || ep.webpage_url
+    })) || [{
+      title: result.title,
+      url: result.url || result.original_url || result.webpage_url
+    }];
 
-    try {
-      const result = JSON.parse(stdout);
-      const episodes = result.entries || [result];
-
-      const links = episodes.map(ep => ({
-        title: ep.title,
-        url: ep.url || ep.original_url
-      }));
-
-      res.json({ episodes: links });
-    } catch (err) {
-      res.json({ error: "Failed to parse result" });
-    }
-  });
+    res.json({ episodes });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "yt-dlp failed to fetch. Check cookies or link." });
+  }
 });
 
-const PORT = process.env.PORT || 3000;
+app.get('/', (req, res) => {
+  res.send('✅ Kuku Downloader Backend is Running');
+});
+
 app.listen(PORT, () => {
-  console.log(`✅ Server running at http://localhost:${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
